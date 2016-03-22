@@ -10,7 +10,7 @@
 
 @interface ViewController ()<NSURLSessionDownloadDelegate>
 @property (weak, nonatomic) IBOutlet UISlider *downloadSlider;
-@property (nonatomic, strong) NSMutableArray *dataArray;
+@property (nonatomic, assign) double value;
 @property (nonatomic, strong) NSData *data;
 @property (nonatomic, strong) NSURLSession *session;
 @property (nonatomic, strong) NSURLSessionDownloadTask *task;
@@ -19,27 +19,26 @@
 
 @implementation ViewController
 
-- (NSMutableArray *)dataArray {
-    if (_dataArray == nil) {
-        _dataArray = [[NSMutableArray alloc] initWithCapacity:0];
-    }
-    return _dataArray;
-}
+
 - (IBAction)activityButton:(id)sender {
+    [self createTaskByURLString:@"http://static.tripbe.com/videofiles/20121214/9533522808.f4v.mp4"];
     [self.task resume];
 }
 - (IBAction)endButton:(id)sender {
-    [self.task cancel];
+//    [self.task cancel];
+//断点续载时，不要执行cancellfan方法
+//而且断点续载时，一个代理方法将被执行
     if (self.task) {
         [self.task cancelByProducingResumeData:^(NSData * _Nullable resumeData) {
             self.data = resumeData;
+            self.task = nil;//置空任务
         }];
      }
 }
 
 - (NSURLSession *)session {
     if (_session == nil) {
-        _session = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration ephemeralSessionConfiguration] delegate:self delegateQueue:[NSOperationQueue mainQueue]];
+        _session = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration ephemeralSessionConfiguration] delegate:self delegateQueue:[[NSOperationQueue alloc] init]];
 #warning 这里设置一个主线程.完成后测试改动 这里设置的工作模式，完成够测试改动
     }
     return _session;
@@ -49,6 +48,9 @@
 - (void)createTaskByURLString:(NSString *)URLString {
     if (self.data != nil) {
         self.task = [self.session downloadTaskWithResumeData:self.data];
+    
+        self.downloadSlider.value = self.value;
+        NSLog(@"self.data:%@,self.value:%f",self.data,self.value);
     } else {
     self.task = [self.session downloadTaskWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:URLString]]];
     }
@@ -58,8 +60,17 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.downloadSlider.value = 0;
-    [self createTaskByURLString:@"http://static.tripbe.com/videofiles/20121214/9533522808.f4v.mp4"];
     
+    
+}
+
+
+//断点续载时，一个任务将会被执行
+- (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didResumeAtOffset:(int64_t)fileOffset expectedTotalBytes:(int64_t)expectedTotalBytes {
+//    fileOffset处开始下载
+//    expectedTotalBytes期望收到的所有的信息
+    self.downloadSlider.value = fileOffset;
+    NSLog(@"任务断续：fileOffset：%lld",fileOffset);
 }
 
 //下载完成后执行的返回错误信息的任务
@@ -85,13 +96,31 @@
 }
 //下载进度的任务
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didWriteData:(int64_t)bytesWritten totalBytesWritten:(int64_t)totalBytesWritten totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite {
-    
+    NSLog(@"%@",[NSThread currentThread]);
 //    bytesWritten--每次写入的data字节数;
 //    totalBytesWritten--当前一共写入的data字节数;
 //    totalBytesExpectedToWrite--期望收到的所有data字节数;
+#warning 在第二次下载的时候，这个最大值怎么设置什么的  还是有些不知道
     self.downloadSlider.maximumValue = totalBytesExpectedToWrite;
-    self.downloadSlider.value = totalBytesWritten ;    NSLog(@" %lld  %lld",totalBytesWritten, totalBytesExpectedToWrite);
+    self.downloadSlider.value = totalBytesWritten  ;    NSLog(@" %lld  %lld",totalBytesWritten, totalBytesExpectedToWrite);
+    self.value = totalBytesWritten ;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 - (void)didReceiveMemoryWarning {
     [super didReceiveMemoryWarning];
